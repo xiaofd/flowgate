@@ -1,0 +1,42 @@
+# 构建产物
+build/
+dist/
+*.exe
+*.bin
+
+# 大体积核心二进制资产（通过 scripts/fetch-assets.ps1 / .sh 重新获取）
+internal/assets/assets/fg-core-*
+
+# 依赖目录
+node_modules/
+
+# 敏感信息与环境配置
+.env
+.env.*
+*.local
+config/secret*
+secrets/
+*.pem
+*.key
+
+# 运行期生成的账号与配置（严禁入库）
+warp.json
+config.json
+sing-box.json
+
+# 本地测试数据目录
+.fg-home/
+
+# 规则集编译产物（由 scripts/dev-sites.json 经 fg-core rule-set compile 生成）
+scripts/dev-sites.srs
+
+# IDE 与系统文件
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 日志与临时文件
+*.log
+*.tmp
+*.old
