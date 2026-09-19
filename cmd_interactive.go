@@ -28,6 +28,7 @@ func interactive(p cfg.Paths) error {
 		term.Plain("   9. 一键更新               (update)")
 		term.Plain("  10. 全面自检               (doctor)")
 		term.Plain("  11. 卸载服务 / 退出清理    (uninstall)")
+		term.Plain("  12. 自定义分流清单管理     (rules)")
 		term.Plain("   0. 退出")
 		term.Plain("  ─────────────────────────────────────────────")
 		term.Plain("")
@@ -71,6 +72,8 @@ func interactive(p cfg.Paths) error {
 		case "11":
 			interactiveCmd = "uninstall"
 			err = cmdUninstall(p)
+		case "12":
+			err = cmdRules(p)
 		case "0", "q", "Q", "exit", "quit", "退出":
 			term.Plain("")
 			term.Info("已退出，再见")
@@ -78,7 +81,7 @@ func interactive(p cfg.Paths) error {
 		case "":
 			continue // 直接回车 → 刷新菜单与状态
 		default:
-			term.Warn("无效选项: %s（请输入 0-11）", choice)
+			term.Warn("无效选项: %s（请输入 0-12）", choice)
 			continue
 		}
 		interactiveCmd = "" // 命令执行完毕，清除重放上下文

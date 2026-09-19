@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"flowgate/internal/cfg"
 	"flowgate/internal/warp"
@@ -46,6 +47,7 @@ type sbDNSServer struct {
 }
 
 type sbDNSRule struct {
+	Domain       []string `json:"domain,omitempty"`
 	DomainSuffix []string `json:"domain_suffix,omitempty"`
 	RuleSet      []string `json:"rule_set,omitempty"`
 	Server       string   `json:"server"`
@@ -111,7 +113,9 @@ type sbRouteRule struct {
 	Action       string   `json:"action,omitempty"`
 	Protocol     string   `json:"protocol,omitempty"`
 	IPIsPrivate  bool     `json:"ip_is_private,omitempty"`
+	Domain       []string `json:"domain,omitempty"`
 	DomainSuffix []string `json:"domain_suffix,omitempty"`
+	IPCIDR       []string `json:"ip_cidr,omitempty"`
 	RuleSet      []string `json:"rule_set,omitempty"`
 	Outbound     string   `json:"outbound,omitempty"`
 }
@@ -269,14 +273,91 @@ func buildTunAddress(app cfg.App) []string {
 	return []string{"198.18.0.1/30", "fdfe:dcba:9876::1/126"}
 }
 
+// parseRuleItems 智能解析自定义清单项，将通配符域名、普通域名、单 IP、CIDR 网段分别归类。
+func parseRuleItems(items []string) (domains []string, suffixes []string, ipCIDRs []string) {
+	for _, raw := range items {
+		item := strings.TrimSpace(strings.ToLower(raw))
+		if item == "" {
+			continue
+		}
+		// 剥离可能误贴的 URL 协议头 (https://, http://)
+		if i := strings.Index(item, "://"); i >= 0 {
+			item = item[i+3:]
+		}
+		// 截断路径，但需避开 CIDR 格式（如 192.168.1.0/24）
+		if _, _, err := net.ParseCIDR(item); err == nil {
+			ipCIDRs = append(ipCIDRs, item)
+			continue
+		}
+		if i := strings.Index(item, "/"); i >= 0 {
+			item = item[:i]
+		}
+		// 剥离可能携带的端口（如 example.com:443，避开 IPv6 如 [::1]:80）
+		if strings.Contains(item, ":") && !strings.Contains(item, "::") {
+			if h, _, err := net.SplitHostPort(item); err == nil {
+				item = h
+			}
+		}
+
+		// 单 IP 检测（IPv4 / IPv6）
+		if ip := net.ParseIP(item); ip != nil {
+			if ip.To4() != nil {
+				ipCIDRs = append(ipCIDRs, ip.String()+"/32")
+			} else {
+				ipCIDRs = append(ipCIDRs, ip.String()+"/128")
+			}
+			continue
+		}
+
+		// 通配符域名处理（*.example.com 或 .example.com）
+		if strings.HasPrefix(item, "*.") {
+			clean := strings.TrimPrefix(item, "*.")
+			suffixes = append(suffixes, clean)
+			domains = append(domains, clean)
+			continue
+		}
+		if strings.HasPrefix(item, ".") {
+			clean := strings.TrimPrefix(item, ".")
+			suffixes = append(suffixes, clean)
+			domains = append(domains, clean)
+			continue
+		}
+
+		// 普通域名：既支持精确匹配，也支持后缀匹配以覆盖全量子域名
+		suffixes = append(suffixes, item)
+		domains = append(domains, item)
+	}
+	return deduplicate(domains), deduplicate(suffixes), deduplicate(ipCIDRs)
+}
+
+func deduplicate(list []string) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for _, s := range list {
+		if _, ok := seen[s]; !ok {
+			seen[s] = struct{}{}
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func buildDNSRules(app cfg.App) []sbDNSRule {
 	rules := []sbDNSRule{}
-	if len(app.Route.DirectDomains) > 0 {
-		rules = append(rules, sbDNSRule{DomainSuffix: app.Route.DirectDomains, Server: "dns-local"})
+
+	// === 最高优先级 #1：用户自定义直连域名解析 ===
+	dirDomains, dirSuffixes, _ := parseRuleItems(app.AllDirectList())
+	if len(dirDomains) > 0 || len(dirSuffixes) > 0 {
+		rules = append(rules, sbDNSRule{Domain: dirDomains, DomainSuffix: dirSuffixes, Server: "dns-local"})
 	}
-	if len(app.Route.ProxyDomains) > 0 {
-		rules = append(rules, sbDNSRule{DomainSuffix: app.Route.ProxyDomains, Server: "dns-warp"})
+
+	// === 最高优先级 #2：用户自定义走 WARP 域名解析（防污染） ===
+	proxyDomains, proxySuffixes, _ := parseRuleItems(app.AllProxyList())
+	if len(proxyDomains) > 0 || len(proxySuffixes) > 0 {
+		rules = append(rules, sbDNSRule{Domain: proxyDomains, DomainSuffix: proxySuffixes, Server: "dns-warp"})
 	}
+
+	// === 次优先级：系统内置规则集 ===
 	rules = append(rules, sbDNSRule{RuleSet: []string{"geosite-gfw", "geosite-dev"}, Server: "dns-warp"})
 	return rules
 }
@@ -285,15 +366,29 @@ func buildRouteRules(app cfg.App) []sbRouteRule {
 	rules := []sbRouteRule{
 		{Action: "sniff"},
 		{Protocol: "dns", Action: "hijack-dns"},
-		{IPIsPrivate: true, Outbound: "direct"},
 	}
-	if len(app.Route.DirectDomains) > 0 {
-		rules = append(rules, sbRouteRule{DomainSuffix: app.Route.DirectDomains, Outbound: "direct"})
+
+	// === 最高优先级 #1：用户自定义直连清单（强制直连，碾压一切）===
+	dirDomains, dirSuffixes, dirIPs := parseRuleItems(app.AllDirectList())
+	if len(dirDomains) > 0 || len(dirSuffixes) > 0 {
+		rules = append(rules, sbRouteRule{Domain: dirDomains, DomainSuffix: dirSuffixes, Outbound: "direct"})
 	}
-	if len(app.Route.ProxyDomains) > 0 {
-		rules = append(rules, sbRouteRule{DomainSuffix: app.Route.ProxyDomains, Outbound: "warp"})
+	if len(dirIPs) > 0 {
+		rules = append(rules, sbRouteRule{IPCIDR: dirIPs, Outbound: "direct"})
 	}
+
+	// === 最高优先级 #2：用户自定义走 WARP 清单（强制走 WARP，碾压内置直连规则）===
+	proxyDomains, proxySuffixes, proxyIPs := parseRuleItems(app.AllProxyList())
+	if len(proxyDomains) > 0 || len(proxySuffixes) > 0 {
+		rules = append(rules, sbRouteRule{Domain: proxyDomains, DomainSuffix: proxySuffixes, Outbound: "warp"})
+	}
+	if len(proxyIPs) > 0 {
+		rules = append(rules, sbRouteRule{IPCIDR: proxyIPs, Outbound: "warp"})
+	}
+
+	// === 次优先级：系统默认规则 ===
 	rules = append(rules,
+		sbRouteRule{IPIsPrivate: true, Outbound: "direct"},
 		sbRouteRule{RuleSet: []string{"geosite-gfw", "geosite-dev"}, Outbound: "warp"},
 		sbRouteRule{RuleSet: []string{"geosite-cn", "geoip-cn"}, Outbound: "direct"},
 	)

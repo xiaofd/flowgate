@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"flowgate/internal/assets"
 	"flowgate/internal/warp"
@@ -98,10 +99,46 @@ type App struct {
 		Remote string `json:"remote"` // 经 WARP 的远程 DNS
 	} `json:"dns"`
 	Route struct {
-		ProxyDomains  []string `json:"proxy_domains,omitempty"`  // 自定义走 WARP 的域名或后缀
-		DirectDomains []string `json:"direct_domains,omitempty"` // 自定义直连的域名或后缀
+		ProxyList     []string `json:"proxy_list,omitempty"`     // 自定义走 WARP 清单（支持 *.domain.com, domain.com, 1.2.3.4, 10.0.0.0/24）
+		DirectList    []string `json:"direct_list,omitempty"`    // 自定义直连清单（同上）
+		ProxyDomains  []string `json:"proxy_domains,omitempty"`  // 向下兼容旧配置
+		DirectDomains []string `json:"direct_domains,omitempty"` // 向下兼容旧配置
 	} `json:"route,omitempty"`
 	LogLevel string `json:"log_level"`
+}
+
+// AllProxyList 返回合并去重后的走 WARP 自定义清单。
+func (a App) AllProxyList() []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for _, item := range append(append([]string{}, a.Route.ProxyList...), a.Route.ProxyDomains...) {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; !ok {
+			seen[item] = struct{}{}
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// AllDirectList 返回合并去重后的直连自定义清单。
+func (a App) AllDirectList() []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for _, item := range append(append([]string{}, a.Route.DirectList...), a.Route.DirectDomains...) {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; !ok {
+			seen[item] = struct{}{}
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 // 后端类型常量。

@@ -18,7 +18,7 @@ import (
 )
 
 // Version 当前版本。
-const Version = "1.0.1"
+const Version = "1.0.2"
 
 var (
 	flagHome      string
@@ -101,6 +101,8 @@ func run(args []string) error {
 		return cmdLogs(p, cmdArgs)
 	case "doctor":
 		return cmdDoctor(p)
+	case "rules", "rule":
+		return cmdRules(p)
 	case "update-rules":
 		return cmdUpdateRules(p, cmdArgs)
 	case "update":
@@ -144,6 +146,7 @@ func usage() {
 	term.Plain("  status         查看服务、核心与两条链路的状态")
 	term.Plain("  logs [-f] [-n] 查看核心日志（-f 跟随，-n 行数，默认 50）")
 	term.Plain("  doctor         全面自检")
+	term.Plain("  rules          管理自定义分流清单（支持通配符与 IP/CIDR）")
 	term.Plain("  update         一键更新：刷新分流规则 + 升级官方 WARP 客户端")
 	term.Plain("  update-rules   仅刷新分流规则（--online 从镜像在线更新）")
 	term.Plain("  warp-scan      扫描可用接入点并择优（仅 wireguard 后端）")
