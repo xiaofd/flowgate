@@ -18,7 +18,7 @@ import (
 )
 
 // Version 当前版本。
-const Version = "1.0.0"
+const Version = "1.0.1"
 
 var (
 	flagHome      string
