@@ -46,8 +46,9 @@ type sbDNSServer struct {
 }
 
 type sbDNSRule struct {
-	RuleSet []string `json:"rule_set,omitempty"`
-	Server  string   `json:"server"`
+	DomainSuffix []string `json:"domain_suffix,omitempty"`
+	RuleSet      []string `json:"rule_set,omitempty"`
+	Server       string   `json:"server"`
 }
 
 type sbTun struct {
@@ -107,11 +108,12 @@ type sbRoute struct {
 }
 
 type sbRouteRule struct {
-	Action      string   `json:"action,omitempty"`
-	Protocol    string   `json:"protocol,omitempty"`
-	IPIsPrivate bool     `json:"ip_is_private,omitempty"`
-	RuleSet     []string `json:"rule_set,omitempty"`
-	Outbound    string   `json:"outbound,omitempty"`
+	Action       string   `json:"action,omitempty"`
+	Protocol     string   `json:"protocol,omitempty"`
+	IPIsPrivate  bool     `json:"ip_is_private,omitempty"`
+	DomainSuffix []string `json:"domain_suffix,omitempty"`
+	RuleSet      []string `json:"rule_set,omitempty"`
+	Outbound     string   `json:"outbound,omitempty"`
 }
 
 type sbRuleSet struct {
@@ -179,11 +181,7 @@ func BuildConfig(p cfg.Paths, app cfg.App, acc *warp.Account) error {
 				{Type: "udp", Tag: "dns-local", Server: app.DNS.Local},
 				dnsWarp,
 			},
-			// GFW 域名与开发站点（pypi/npm/docker 镜像等）的解析必须走 WARP 通道，
-			// 避免 DNS 污染与解析劣化；其余域名走国内 DNS。
-			Rules: []sbDNSRule{
-				{RuleSet: []string{"geosite-gfw", "geosite-dev"}, Server: "dns-warp"},
-			},
+			Rules:    buildDNSRules(app),
 			Final:    "dns-local",
 			Strategy: "prefer_ipv4",
 		},
@@ -192,7 +190,7 @@ func BuildConfig(p cfg.Paths, app cfg.App, acc *warp.Account) error {
 			Type:          "tun",
 			Tag:           "tun-in",
 			InterfaceName: app.Tun.Name,
-			Address:       []string{"172.19.0.1/30", "fdfe:dcba:9876::1/126"},
+			Address:       buildTunAddress(app),
 			MTU:           app.Tun.MTU,
 			// 最小化构建不含 gVisor，显式使用 system 协议栈（经典模式，稳定）
 			Stack:       "system",
@@ -201,14 +199,7 @@ func BuildConfig(p cfg.Paths, app cfg.App, acc *warp.Account) error {
 		}},
 		Outbounds: buildOutbounds(warpOutbound),
 		Route: sbRoute{
-			Rules: []sbRouteRule{
-				{Action: "sniff"},
-				{Protocol: "dns", Action: "hijack-dns"},
-				{IPIsPrivate: true, Outbound: "direct"},
-				// GFW 名单 + 开发站点名单（pypi/npm/ghcr/quay/k8s 等）→ WARP
-				{RuleSet: []string{"geosite-gfw", "geosite-dev"}, Outbound: "warp"},
-				{RuleSet: []string{"geosite-cn", "geoip-cn"}, Outbound: "direct"},
-			},
+			Rules: buildRouteRules(app),
 			RuleSet: []sbRuleSet{
 				localRuleSet("geosite-gfw", p.RulesDir),
 				localRuleSet("geosite-dev", p.RulesDir),
@@ -268,4 +259,43 @@ func splitEndpoint(endpoint string) (string, int) {
 		port = 2408
 	}
 	return host, port
+}
+
+func buildTunAddress(app cfg.App) []string {
+	if len(app.Tun.Address) > 0 {
+		return app.Tun.Address
+	}
+	// 默认使用 198.18.0.1/30（RFC 2544 / 5737），避开 Docker 默认 172.17~31 网段
+	return []string{"198.18.0.1/30", "fdfe:dcba:9876::1/126"}
+}
+
+func buildDNSRules(app cfg.App) []sbDNSRule {
+	rules := []sbDNSRule{}
+	if len(app.Route.DirectDomains) > 0 {
+		rules = append(rules, sbDNSRule{DomainSuffix: app.Route.DirectDomains, Server: "dns-local"})
+	}
+	if len(app.Route.ProxyDomains) > 0 {
+		rules = append(rules, sbDNSRule{DomainSuffix: app.Route.ProxyDomains, Server: "dns-warp"})
+	}
+	rules = append(rules, sbDNSRule{RuleSet: []string{"geosite-gfw", "geosite-dev"}, Server: "dns-warp"})
+	return rules
+}
+
+func buildRouteRules(app cfg.App) []sbRouteRule {
+	rules := []sbRouteRule{
+		{Action: "sniff"},
+		{Protocol: "dns", Action: "hijack-dns"},
+		{IPIsPrivate: true, Outbound: "direct"},
+	}
+	if len(app.Route.DirectDomains) > 0 {
+		rules = append(rules, sbRouteRule{DomainSuffix: app.Route.DirectDomains, Outbound: "direct"})
+	}
+	if len(app.Route.ProxyDomains) > 0 {
+		rules = append(rules, sbRouteRule{DomainSuffix: app.Route.ProxyDomains, Outbound: "warp"})
+	}
+	rules = append(rules,
+		sbRouteRule{RuleSet: []string{"geosite-gfw", "geosite-dev"}, Outbound: "warp"},
+		sbRouteRule{RuleSet: []string{"geosite-cn", "geoip-cn"}, Outbound: "direct"},
+	)
+	return rules
 }

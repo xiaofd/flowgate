@@ -88,14 +88,19 @@ type App struct {
 		MTU         int    `json:"mtu"`
 	} `json:"warp"`
 	Tun struct {
-		Name        string `json:"name"`
-		MTU         int    `json:"mtu"`
-		StrictRoute bool   `json:"strict_route"`
+		Name        string   `json:"name"`
+		MTU         int      `json:"mtu"`
+		StrictRoute bool     `json:"strict_route"`
+		Address     []string `json:"address,omitempty"` // TUN 虚拟网卡 IP（避开 Docker 172.17~31 网段）
 	} `json:"tun"`
 	DNS struct {
 		Local  string `json:"local"`  // 国内直连 DNS
 		Remote string `json:"remote"` // 经 WARP 的远程 DNS
 	} `json:"dns"`
+	Route struct {
+		ProxyDomains  []string `json:"proxy_domains,omitempty"`  // 自定义走 WARP 的域名或后缀
+		DirectDomains []string `json:"direct_domains,omitempty"` // 自定义直连的域名或后缀
+	} `json:"route,omitempty"`
 	LogLevel string `json:"log_level"`
 }
 
@@ -114,6 +119,8 @@ func DefaultApp() App {
 	a.Warp.MTU = 1280
 	a.Tun.Name = "fgtun0"
 	a.Tun.MTU = 9000
+	// 默认使用 198.18.0.1/30（RFC 2544 / 5737），避开 Docker 默认 172.17~31 网段
+	a.Tun.Address = []string{"198.18.0.1/30", "fdfe:dcba:9876::1/126"}
 	// Windows 下 strict_route 会拦截核心与 WARP 客户端自身的 UDP 出站，默认关闭
 	a.Tun.StrictRoute = runtime.GOOS != "windows"
 	a.DNS.Local = "223.5.5.5"
@@ -155,6 +162,9 @@ func LoadApp(path string) (App, error) {
 	}
 	if app.Tun.MTU <= 0 {
 		app.Tun.MTU = d.Tun.MTU
+	}
+	if len(app.Tun.Address) == 0 {
+		app.Tun.Address = d.Tun.Address
 	}
 	if app.DNS.Local == "" {
 		app.DNS.Local = d.DNS.Local

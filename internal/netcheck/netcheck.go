@@ -25,14 +25,19 @@ var client = &http.Client{
 
 func probe(url string) Result {
 	start := time.Now()
-	resp, err := client.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return Result{Err: err}
+	}
+	req.Header.Set("User-Agent", "curl/8.5.0")
+	resp, err := client.Do(req)
 	if err != nil {
 		return Result{Err: err}
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	lat := time.Since(start).Round(time.Millisecond)
-	if resp.StatusCode == http.StatusNoContent {
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
 		return Result{OK: true, Code: resp.StatusCode, Latency: lat}
 	}
 	return Result{
@@ -50,4 +55,9 @@ func CheckDirect() Result {
 // CheckWarp GFW 名单链路探测（应经 WARP 转发后可用）。
 func CheckWarp() Result {
 	return probe("http://www.google.com/generate_204")
+}
+
+// CheckDev 关键开发资源链路探测（GitHub API，经分流规则走 WARP）。
+func CheckDev() Result {
+	return probe("https://api.github.com/zen")
 }

@@ -40,8 +40,19 @@ func Run(cli string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
-// Configure 将客户端配置为代理模式并连接（幂等）。
-func Configure(cli string) error {
+// SetProxyPort 显式设置官方客户端本地 SOCKS5 代理端口。
+func SetProxyPort(cli string, port int) error {
+	pStr := strconv.Itoa(port)
+	if _, err := Run(cli, "--accept-tos", "proxy", "port", pStr); err != nil {
+		if _, err2 := Run(cli, "--accept-tos", "set-proxy-port", pStr); err2 != nil {
+			return fmt.Errorf("设置代理端口失败: %w", err)
+		}
+	}
+	return nil
+}
+
+// Configure 将客户端配置为代理模式、设置目标端口并连接（幂等）。
+func Configure(cli string, proxyAddr string) error {
 	// 1. 注册（已注册时报错，忽略）
 	_, err := Run(cli, "--accept-tos", "registration", "new")
 	if err != nil {
@@ -53,9 +64,18 @@ func Configure(cli string) error {
 			return fmt.Errorf("设置代理模式失败: %w", err)
 		}
 	}
-	// 3. 尽力强制 MASQUE 隧道协议（不支持该子命令的版本忽略）
+	// 3. 显式设置代理端口，避免默认端口未初始化或与系统冲突
+	if proxyAddr != "" {
+		_, portStr, err := net.SplitHostPort(proxyAddr)
+		if err == nil {
+			if port, err := strconv.Atoi(portStr); err == nil && port > 0 {
+				_ = SetProxyPort(cli, port)
+			}
+		}
+	}
+	// 4. 尽力强制 MASQUE 隧道协议（不支持该子命令的版本忽略）
 	_, _ = Run(cli, "--accept-tos", "tunnel", "protocol", "set", "MASQUE")
-	// 4. 连接
+	// 5. 连接
 	if _, err := Run(cli, "--accept-tos", "connect"); err != nil {
 		return fmt.Errorf("warp-cli connect 失败: %w", err)
 	}

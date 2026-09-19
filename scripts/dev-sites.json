@@ -3,6 +3,7 @@
   "rules": [
     {
       "domain_suffix": [
+        "github.com", "githubusercontent.com", "githubassets.com", "ghcr.io",
         "pypi.org", "pythonhosted.org", "python.org", "pypa.io", "pytorch.org",
         "anaconda.com", "anaconda.org",
         "npmjs.org", "npmjs.com", "nodejs.org", "nodejs.com", "yarnpkg.com", "unpkg.com",
@@ -10,7 +11,11 @@
         "crates.io", "rustup.rs", "rust-lang.org", "docs.rs",
         "rubygems.org",
         "maven.org", "gradle.org", "gradle.com",
-        "quay.io", "ghcr.io", "k8s.io",
+        "quay.io", "k8s.io",
+        "docker.com", "docker.io",
+        "huggingface.co", "hf.co",
+        "openai.com", "anthropic.com", "cursor.com", "cursor.sh", "ollama.com",
+        "brew.sh",
         "gitlab.com", "gitlab.io", "gitlab.net", "bitbucket.org", "sourceforge.net",
         "stackoverflow.com", "stackexchange.com", "serverfault.com", "superuser.com", "sstatic.net",
         "readthedocs.io", "readthedocs.org",
@@ -20,7 +25,9 @@
     {
       "domain": [
         "marketplace.visualstudio.com", "update.code.visualstudio.com",
-        "plugins.jetbrains.com", "download.jetbrains.com", "proxy.golang.org"
+        "plugins.jetbrains.com", "download.jetbrains.com", "proxy.golang.org",
+        "objects.githubusercontent.com",
+        "registry-1.docker.io", "auth.docker.io", "production.cloudflare.docker.com"
       ]
     }
   ]

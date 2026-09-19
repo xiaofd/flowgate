@@ -31,30 +31,40 @@ func newForegroundLogger(p cfg.Paths) *log.Logger {
 	return log.New(io.MultiWriter(os.Stderr, f), "", log.LstdFlags)
 }
 
-// ruleMirrors 规则集在线镜像（依次尝试）。
+// ruleMirrors 规则集在线镜像（优先使用高速国内镜像，原站作后备）。
 var ruleMirrors = map[string][]string{
 	"geosite-gfw.srs": {
-		"https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/gfw.srs",
 		"https://gh-proxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/gfw.srs",
+		"https://mirror.ghproxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/gfw.srs",
+		"https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/gfw.srs",
 	},
 	"geosite-cn.srs": {
-		"https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs",
 		"https://gh-proxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs",
+		"https://mirror.ghproxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs",
+		"https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs",
 	},
 	"geoip-cn.srs": {
-		"https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs",
 		"https://gh-proxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs",
+		"https://mirror.ghproxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs",
+		"https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs",
 	},
 }
 
 // downloadRules 在线下载规则集到 dir。
 func downloadRules(dir string) error {
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: 15 * time.Second}
 	for name, urls := range ruleMirrors {
 		var lastErr error
 		done := false
+		term.Step("下载规则集: %s ...", name)
 		for _, u := range urls {
-			resp, err := client.Get(u)
+			req, rerr := http.NewRequest(http.MethodGet, u, nil)
+			if rerr != nil {
+				lastErr = rerr
+				continue
+			}
+			req.Header.Set("User-Agent", "curl/8.5.0")
+			resp, err := client.Do(req)
 			if err != nil {
 				lastErr = err
 				continue

@@ -368,6 +368,12 @@ func reportConnectivity() {
 			term.Dim("  提示: 执行 warp-cli status 检查官方客户端，或 flowgate doctor 全面自检")
 		}
 	}
+	dev := netcheck.CheckDev()
+	if dev.OK {
+		term.KV("开发加速", fmt.Sprintf("正常（GitHub API %v）", dev.Latency))
+	} else {
+		term.KV("开发加速", "检测中/暂不可达（"+errText(dev.Err)+"）")
+	}
 }
 
 func errText(err error) string {

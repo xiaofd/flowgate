@@ -49,27 +49,18 @@ func warpScanCandidates(current string, acc *warp.Account) []string {
 			add(fmt.Sprintf("[%s]:%d", acc.EndpointV6, p))
 		}
 	}
-	// 社区发现的 WARP anycast 扩展端口（国内 ISP 常封锁 500/1701/2408/4500 等
-	// VPN 特征端口，但 WARP 接受大量其他端口，可借此绕过）
+	// 社区发现的 WARP anycast 扩展端口（优先测试连通概率最高的非标端口，绕过 ISP 特征封锁）
 	extendedPorts := []int{
 		2408, 500, 1701, 4500, // 官方端口
-		854, 859, 864, 878, 880, 890, 891, 894, 903, 908, 928, 934,
-		939, 942, 943, 945, 946, 955, 968, 987, 988, 1002, 1010, 1014,
-		1018, 1070, 1074, 1180, 1387, 1843, 2371, 2506, 3138, 3476, 3581,
-		3854, 4177, 4198, 4233, 5279,
+		854, 859, 878, 890, 891, 903, 908, 928, 934, 1074,
+		1180, 1387, 1843, 2371, 2506, 3138, 3476, 3581, 4233,
 	}
-	for _, ip := range []string{acc.EndpointV4, "162.159.192.1", "188.114.96.1", "188.114.97.1"} {
+	for _, ip := range []string{acc.EndpointV4, "162.159.192.1", "188.114.96.1"} {
 		if ip == "" {
 			continue
 		}
 		for _, p := range extendedPorts {
 			add(fmt.Sprintf("%s:%d", ip, p))
-		}
-	}
-	// IPv6 端点（官方端口）
-	if acc.EndpointV6 != "" {
-		for _, p := range ports {
-			add(fmt.Sprintf("[%s]:%d", acc.EndpointV6, p))
 		}
 	}
 	return list

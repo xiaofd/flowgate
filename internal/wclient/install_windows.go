@@ -33,14 +33,14 @@ const (
 func Install(print func(string, ...any)) error {
 	tmp := filepath.Join(os.TempDir(), "Cloudflare_WARP_x64.msi")
 	print("下载官方 WARP 客户端安装包（约 70MB）...")
-	if err := downloadFile(msiURL, tmp); err != nil {
+	if err := downloadFile(msiURL, tmp, print); err != nil {
 		print("主下载地址失败（%v），尝试备用地址 ...", err)
-		if err2 := downloadFile(msiURLAlt, tmp); err2 != nil {
+		if err2 := downloadFile(msiURLAlt, tmp, print); err2 != nil {
 			return fmt.Errorf("下载安装包失败: %v / %v", err, err2)
 		}
 	}
 	defer os.Remove(tmp)
-	print("静默安装官方 WARP 客户端（约 1-2 分钟）...")
+	print("正在静默安装官方 WARP 客户端（约 1-2 分钟，请稍候）...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "msiexec", "/i", tmp, "/qn", "/norestart")
@@ -50,9 +50,46 @@ func Install(print func(string, ...any)) error {
 	return nil
 }
 
-func downloadFile(url, dst string) error {
+type progressReader struct {
+	reader     io.Reader
+	total      int64
+	current    int64
+	lastTime   time.Time
+	lastBytes  int64
+	print      func(string, ...any)
+}
+
+func (pr *progressReader) Read(p []byte) (int, error) {
+	n, err := pr.reader.Read(p)
+	if n > 0 {
+		pr.current += int64(n)
+		now := time.Now()
+		if pr.print != nil && (now.Sub(pr.lastTime) >= time.Second || err == io.EOF) {
+			duration := now.Sub(pr.lastTime).Seconds()
+			speed := float64(pr.current-pr.lastBytes) / duration / (1 << 20)
+			pr.lastTime = now
+			pr.lastBytes = pr.current
+			if pr.total > 0 {
+				pct := float64(pr.current) * 100 / float64(pr.total)
+				pr.print("下载进度: %.1f MB / %.1f MB (%.1f%%)  速度: %.1f MB/s",
+					float64(pr.current)/(1<<20), float64(pr.total)/(1<<20), pct, speed)
+			} else {
+				pr.print("已下载: %.1f MB  速度: %.1f MB/s", float64(pr.current)/(1<<20), speed)
+			}
+		}
+	}
+	return n, err
+}
+
+func downloadFile(url, dst string, print func(string, ...any)) error {
 	client := &http.Client{Timeout: 10 * time.Minute}
-	resp, err := client.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "curl/8.5.0")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -65,6 +102,13 @@ func downloadFile(url, dst string) error {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(f, resp.Body)
+
+	pr := &progressReader{
+		reader:    resp.Body,
+		total:     resp.ContentLength,
+		lastTime:  time.Now(),
+		print:     print,
+	}
+	_, err = io.Copy(f, pr)
 	return err
 }

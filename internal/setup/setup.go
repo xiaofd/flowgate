@@ -105,24 +105,21 @@ func ensureClient(app cfg.App, print Printer) (string, error) {
 			return "", fmt.Errorf("安装后仍未找到 warp-cli: %w", err)
 		}
 	}
-	print("配置官方客户端（注册 + 代理模式 + 连接）...")
+	print("配置官方客户端（注册 + 代理模式 + 端口 + 连接）...")
 	var cfgErr error
 	for i := 0; i < 3; i++ {
-		cfgErr = wclient.Configure(cli)
+		cfgErr = wclient.Configure(cli, app.Warp.ClientProxy)
 		if cfgErr == nil {
 			break
 		}
 		// 刚安装完服务可能尚未就绪，稍等重试
-		time.Sleep(5 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 	if cfgErr != nil {
 		return "", cfgErr
 	}
-	print("等待本地代理端口 %s 就绪 ...", app.Warp.ClientProxy)
-	if !wclient.WaitForProxy(app.Warp.ClientProxy, 30*time.Second) {
-		return "", fmt.Errorf("WARP 本地代理端口 %s 未就绪，请检查 warp-cli status", app.Warp.ClientProxy)
-	}
-	// SOCKS5 完整握手校验；端口被其他程序占用时自动换随机端口
+
+	// 校验本地代理（SOCKS5 握手），若目标端口被占或未就绪自动切换空闲端口
 	print("校验本地代理（SOCKS5 握手）...")
 	addr, err := wclient.EnsureProxy(cli, app.Warp.ClientProxy)
 	if err != nil {
