@@ -105,6 +105,8 @@ func run(args []string) error {
 		return cmdRules(p)
 	case "upstream", "node":
 		return cmdUpstream(p, cmdArgs)
+	case "network", "dns":
+		return cmdNetwork(p)
 	case "update-rules":
 		return cmdUpdateRules(p, cmdArgs)
 	case "update":
@@ -150,6 +152,7 @@ func usage() {
 	term.Plain("  doctor         全面自检")
 	term.Plain("  rules          管理自定义分流清单（支持通配符与 IP/CIDR）")
 	term.Plain("  upstream [url] 管理上游后端或直接设置节点分享链接（别名: node）")
+	term.Plain("  network        网络与 DNS 策略管理（IPv6 开关、DNS 解析策略与服务器，别名: dns）")
 	term.Plain("  update         一键更新：刷新分流规则 + 升级官方 WARP 客户端")
 	term.Plain("  update-rules   仅刷新分流规则（--online 从镜像在线更新）")
 	term.Plain("  warp-scan      扫描可用接入点并择优（仅 wireguard 后端）")

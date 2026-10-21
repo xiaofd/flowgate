@@ -276,6 +276,8 @@ func cmdStatus(p cfg.Paths) error {
 		term.KV("核心进程", "未运行")
 	}
 	term.KV("TUN 接口", tunStateText(tunUp, app.Tun.Name))
+	term.KV("IPv6 出栈", ipv6StatusText(app.Tun.IPv6))
+	term.KV("DNS 策略", dnsStrategyText(app.DNS.Strategy, app.Tun.IPv6))
 	term.KV("上游后端", backendText(app))
 	if app.Warp.Backend == cfg.BackendCustom {
 		if strings.TrimSpace(app.Warp.NodeURL) != "" {
