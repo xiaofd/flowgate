@@ -198,7 +198,7 @@ func BuildConfig(p cfg.Paths, app cfg.App, acc *warp.Account) error {
 			},
 			Rules:    buildDNSRules(app),
 			Final:    "dns-local",
-			Strategy: "prefer_ipv4",
+			Strategy: "ipv4_only",
 		},
 		Endpoints: endpoints,
 		Inbounds: []sbTun{{
@@ -281,7 +281,7 @@ func buildTunAddress(app cfg.App) []string {
 		return app.Tun.Address
 	}
 	// 默认使用 198.18.0.1/30（RFC 2544 / 5737），避开 Docker 默认 172.17~31 网段
-	return []string{"198.18.0.1/30", "fdfe:dcba:9876::1/126"}
+	return []string{"198.18.0.1/30"}
 }
 
 // parseRuleItems 智能解析自定义清单项，将通配符域名、普通域名、单 IP、CIDR 网段分别归类。

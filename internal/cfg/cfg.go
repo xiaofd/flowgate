@@ -163,7 +163,8 @@ func DefaultApp() App {
 	a.Tun.Name = "fgtun0"
 	a.Tun.MTU = 9000
 	// 默认使用 198.18.0.1/30（RFC 2544 / 5737），避开 Docker 默认 172.17~31 网段
-	a.Tun.Address = []string{"198.18.0.1/30", "fdfe:dcba:9876::1/126"}
+	// 避免在无公共 IPv6 出口的系统上因默认注入虚拟 IPv6 导致直连流量黑洞，默认仅分配 IPv4
+	a.Tun.Address = []string{"198.18.0.1/30"}
 	// Windows 下 strict_route 会拦截核心与 WARP 客户端自身的 UDP 出站，默认关闭
 	a.Tun.StrictRoute = runtime.GOOS != "windows"
 	a.DNS.Local = "223.5.5.5"
