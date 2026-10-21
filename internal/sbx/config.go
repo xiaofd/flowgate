@@ -99,7 +99,8 @@ type sbSocksOut struct {
 }
 
 type sbDomainResolver struct {
-	Server string `json:"server"`
+	Server   string `json:"server"`
+	Strategy string `json:"strategy,omitempty"`
 }
 
 type sbRoute struct {
@@ -187,6 +188,15 @@ func BuildConfig(p cfg.Paths, app cfg.App, acc *warp.Account) error {
 		}
 	}
 
+	dnsStrategy := app.DNS.Strategy
+	if dnsStrategy == "" {
+		if app.Tun.IPv6 {
+			dnsStrategy = "prefer_ipv4"
+		} else {
+			dnsStrategy = "ipv4_only"
+		}
+	}
+
 	c := sbConfig{
 		Log: sbLog{Level: app.LogLevel, Timestamp: true},
 		DNS: sbDNS{
@@ -198,7 +208,7 @@ func BuildConfig(p cfg.Paths, app cfg.App, acc *warp.Account) error {
 			},
 			Rules:    buildDNSRules(app),
 			Final:    "dns-local",
-			Strategy: "ipv4_only",
+			Strategy: dnsStrategy,
 		},
 		Endpoints: endpoints,
 		Inbounds: []sbTun{{
@@ -223,7 +233,7 @@ func BuildConfig(p cfg.Paths, app cfg.App, acc *warp.Account) error {
 			},
 			Final:                 "direct",
 			AutoDetectInterface:   true,
-			DefaultDomainResolver: &sbDomainResolver{Server: "dns-local"},
+			DefaultDomainResolver: &sbDomainResolver{Server: "dns-local", Strategy: dnsStrategy},
 		},
 	}
 
@@ -279,6 +289,9 @@ func splitEndpoint(endpoint string) (string, int) {
 func buildTunAddress(app cfg.App) []string {
 	if len(app.Tun.Address) > 0 {
 		return app.Tun.Address
+	}
+	if app.Tun.IPv6 {
+		return []string{"198.18.0.1/30", "fdfe:dcba:9876::1/126"}
 	}
 	// 默认使用 198.18.0.1/30（RFC 2544 / 5737），避开 Docker 默认 172.17~31 网段
 	return []string{"198.18.0.1/30"}

@@ -94,10 +94,12 @@ type App struct {
 		MTU         int      `json:"mtu"`
 		StrictRoute bool     `json:"strict_route"`
 		Address     []string `json:"address,omitempty"` // TUN 虚拟网卡 IP（避开 Docker 172.17~31 网段）
+		IPv6        bool     `json:"ipv6"`              // 是否启用 IPv6 虚拟网卡与路由（默认 false，无公网 IPv6 的环境下开启会导致国内直连超时黑洞）
 	} `json:"tun"`
 	DNS struct {
-		Local  string `json:"local"`  // 国内直连 DNS
-		Remote string `json:"remote"` // 经 WARP 的远程 DNS
+		Local    string `json:"local"`    // 国内直连 DNS
+		Remote   string `json:"remote"`   // 经 WARP 的远程 DNS
+		Strategy string `json:"strategy"` // 域名解析策略: "ipv4_only" | "prefer_ipv4" | "prefer_ipv6" | "ipv6_only"（默认 "ipv4_only"）
 	} `json:"dns"`
 	Route struct {
 		ProxyList     []string `json:"proxy_list,omitempty"`     // 自定义走 WARP 清单（支持 *.domain.com, domain.com, 1.2.3.4, 10.0.0.0/24）
@@ -163,12 +165,13 @@ func DefaultApp() App {
 	a.Tun.Name = "fgtun0"
 	a.Tun.MTU = 9000
 	// 默认使用 198.18.0.1/30（RFC 2544 / 5737），避开 Docker 默认 172.17~31 网段
-	// 避免在无公共 IPv6 出口的系统上因默认注入虚拟 IPv6 导致直连流量黑洞，默认仅分配 IPv4
 	a.Tun.Address = []string{"198.18.0.1/30"}
+	a.Tun.IPv6 = false // 默认不开启虚拟 IPv6（避免直连黑洞），用户可配置开启
 	// Windows 下 strict_route 会拦截核心与 WARP 客户端自身的 UDP 出站，默认关闭
 	a.Tun.StrictRoute = runtime.GOOS != "windows"
 	a.DNS.Local = "223.5.5.5"
 	a.DNS.Remote = "1.1.1.1"
+	a.DNS.Strategy = "ipv4_only" // 默认优先/仅 IPv4 稳定直连，开启 IPv6 时可设为 prefer_ipv4 或 prefer_ipv6
 	a.AutoUpdate.Enabled = true
 	a.AutoUpdate.Interval = 24
 	a.LogLevel = "info"
@@ -210,13 +213,20 @@ func LoadApp(path string) (App, error) {
 		app.Tun.MTU = d.Tun.MTU
 	}
 	if len(app.Tun.Address) == 0 {
-		app.Tun.Address = d.Tun.Address
+		if app.Tun.IPv6 {
+			app.Tun.Address = []string{"198.18.0.1/30", "fdfe:dcba:9876::1/126"}
+		} else {
+			app.Tun.Address = []string{"198.18.0.1/30"}
+		}
 	}
 	if app.DNS.Local == "" {
 		app.DNS.Local = d.DNS.Local
 	}
 	if app.DNS.Remote == "" {
 		app.DNS.Remote = d.DNS.Remote
+	}
+	if app.DNS.Strategy == "" {
+		app.DNS.Strategy = d.DNS.Strategy
 	}
 	if app.AutoUpdate.Interval <= 0 {
 		app.AutoUpdate.Interval = d.AutoUpdate.Interval
