@@ -83,7 +83,8 @@ func (p Paths) EnsureDirs() error {
 // App 用户可调配置（config.json）。
 type App struct {
 	Warp struct {
-		Backend     string `json:"backend"`      // "client"=官方客户端(MASQUE，默认) | "wireguard"=内置 WireGuard
+		Backend     string `json:"backend"`      // "client"=官方客户端(MASQUE，默认) | "wireguard"=内置 WireGuard | "custom"=自定义分享链接节点
+		NodeURL     string `json:"node_url,omitempty"` // 自定义节点分享链接（支持 vless://, vmess://, ss://, trojan://, socks5://, http://）
 		ClientProxy string `json:"client_proxy"` // 官方客户端本地 SOCKS5 地址
 		Endpoint    string `json:"endpoint"`     // WireGuard 后端的接入点
 		MTU         int    `json:"mtu"`
@@ -104,6 +105,10 @@ type App struct {
 		ProxyDomains  []string `json:"proxy_domains,omitempty"`  // 向下兼容旧配置
 		DirectDomains []string `json:"direct_domains,omitempty"` // 向下兼容旧配置
 	} `json:"route,omitempty"`
+	AutoUpdate struct {
+		Enabled  bool `json:"enabled"`   // 是否开启规则定时自动更新（默认 true）
+		Interval int  `json:"interval"`  // 自动更新检查间隔（单位：小时，默认 24 小时）
+	} `json:"auto_update"`
 	LogLevel string `json:"log_level"`
 }
 
@@ -145,6 +150,7 @@ func (a App) AllDirectList() []string {
 const (
 	BackendClient    = "client"
 	BackendWireguard = "wireguard"
+	BackendCustom    = "custom"
 )
 
 // DefaultApp 返回默认配置（针对中国内地网络环境优化）。
@@ -162,6 +168,8 @@ func DefaultApp() App {
 	a.Tun.StrictRoute = runtime.GOOS != "windows"
 	a.DNS.Local = "223.5.5.5"
 	a.DNS.Remote = "1.1.1.1"
+	a.AutoUpdate.Enabled = true
+	a.AutoUpdate.Interval = 24
 	a.LogLevel = "info"
 	return a
 }
@@ -208,6 +216,9 @@ func LoadApp(path string) (App, error) {
 	}
 	if app.DNS.Remote == "" {
 		app.DNS.Remote = d.DNS.Remote
+	}
+	if app.AutoUpdate.Interval <= 0 {
+		app.AutoUpdate.Interval = d.AutoUpdate.Interval
 	}
 	if app.LogLevel == "" {
 		app.LogLevel = d.LogLevel

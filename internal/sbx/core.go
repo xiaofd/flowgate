@@ -39,8 +39,8 @@ func RunCoreVersion(p cfg.Paths) (string, error) {
 
 // Core 守护 fg-core 子进程：启动、崩溃退避重启、优雅停止。
 type Core struct {
-	p          cfg.Paths
-	log        *log.Logger
+	p           cfg.Paths
+	log         *log.Logger
 	interactive bool
 
 	mu   sync.Mutex
@@ -51,6 +51,17 @@ type Core struct {
 	stopCh   chan struct{}
 	stopOnce sync.Once
 	done     chan struct{}
+}
+
+// Restart 优雅重启子进程（不退出 Run 循环），用于更新规则或配置后热重启。
+func (c *Core) Restart() {
+	c.mu.Lock()
+	cmd := c.cmd
+	c.mu.Unlock()
+	if cmd != nil && cmd.Process != nil {
+		c.log.Printf("[supervisor] 收到热重启请求，正在重启核心 ...")
+		c.proc.onStop(cmd)
+	}
 }
 
 // NewCore 创建守护器。interactive 为 true 时核心日志同时输出到当前控制台。

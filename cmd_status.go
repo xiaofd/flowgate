@@ -17,6 +17,7 @@ import (
 	"flowgate/internal/cfg"
 	"flowgate/internal/elevate"
 	"flowgate/internal/netcheck"
+	"flowgate/internal/parser"
 	"flowgate/internal/sbx"
 	"flowgate/internal/svc"
 	"flowgate/internal/term"
@@ -276,7 +277,20 @@ func cmdStatus(p cfg.Paths) error {
 	}
 	term.KV("TUN 接口", tunStateText(tunUp, app.Tun.Name))
 	term.KV("上游后端", backendText(app))
-	if app.Warp.Backend == cfg.BackendWireguard {
+	if app.Warp.Backend == cfg.BackendCustom {
+		if strings.TrimSpace(app.Warp.NodeURL) != "" {
+			if parsed, err := parser.ParseNodeURL(app.Warp.NodeURL, "warp"); err == nil {
+				proto := parsed.Outbound["type"]
+				server := parsed.Outbound["server"]
+				port := parsed.Outbound["server_port"]
+				term.KV("自定义节点", fmt.Sprintf("[%v] %v:%v", proto, server, port))
+			} else {
+				term.KV("自定义节点", "链接解析异常（"+err.Error()+"）")
+			}
+		} else {
+			term.KV("自定义节点", "未配置（执行 flowgate node 或在菜单设置）")
+		}
+	} else if app.Warp.Backend == cfg.BackendWireguard {
 		if acc, _ := warp.Load(p.WarpAccount); acc != nil {
 			term.KV("WARP 账号", "已注册（"+acc.IPv4+"）")
 		} else {
@@ -304,6 +318,8 @@ func cmdStatus(p cfg.Paths) error {
 func backendText(app cfg.App) string {
 	if app.Warp.Backend == cfg.BackendWireguard {
 		return "内置 WireGuard（" + app.Warp.Endpoint + "）"
+	} else if app.Warp.Backend == cfg.BackendCustom {
+		return "自定义节点分享链接"
 	}
 	return "官方客户端 MASQUE（" + app.Warp.ClientProxy + "）"
 }
@@ -581,9 +597,10 @@ func cmdUpdateRules(p cfg.Paths, args []string) error {
 	return nil
 }
 
-// cmdUpdate 一键更新：刷新分流规则 + 升级官方 WARP 客户端。
+// cmdUpdate 一键更新：在线刷新分流规则 + 升级官方 WARP 客户端 + 提示重启服务。
 func cmdUpdate(p cfg.Paths) error {
-	if err := cmdUpdateRules(p, nil); err != nil {
+	// 默认传入 --online 实现在线镜像更新
+	if err := cmdUpdateRules(p, []string{"--online"}); err != nil {
 		return err
 	}
 	app, _ := cfg.LoadApp(p.AppConfig)
@@ -598,6 +615,6 @@ func cmdUpdate(p cfg.Paths) error {
 			}
 		}
 	}
-	term.Dim("如服务正在运行，请执行 flowgate restart 生效")
+	checkAndPromptRestart(p)
 	return nil
 }

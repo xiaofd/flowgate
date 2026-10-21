@@ -61,9 +61,51 @@ func (p *Program) run(paths cfg.Paths, lg *log.Logger) {
 		return
 	default:
 	}
+
 	p.core = sbx.NewCore(paths, lg, false)
+
+	// 启动后台定时自动更新任务
+	go p.autoUpdateLoop(paths, lg)
+
 	if err := p.core.Run(); err != nil {
 		lg.Printf("[service] 核心守护异常退出: %v", err)
+	}
+}
+
+// autoUpdateLoop 在后台定期检查与在线更新分流规则，并在更新成功后热重启核心。
+func (p *Program) autoUpdateLoop(paths cfg.Paths, lg *log.Logger) {
+	for {
+		app, _ := cfg.LoadApp(paths.AppConfig)
+		interval := 24 * time.Hour
+		if app.AutoUpdate.Interval > 0 {
+			interval = time.Duration(app.AutoUpdate.Interval) * time.Hour
+		}
+
+		select {
+		case <-p.stopCh:
+			return
+		case <-time.After(interval):
+		}
+
+		// 重新加载配置，检查是否启用
+		app, _ = cfg.LoadApp(paths.AppConfig)
+		if !app.AutoUpdate.Enabled {
+			continue
+		}
+
+		lg.Printf("[auto-update] 开始定期自动更新分流规则 ...")
+		err := setup.DownloadRules(paths.RulesDir, func(format string, v ...any) {
+			lg.Printf("[auto-update] "+format, v...)
+		})
+		if err != nil {
+			lg.Printf("[auto-update] 自动更新分流规则失败: %v", err)
+			continue
+		}
+
+		lg.Printf("[auto-update] 规则在线更新成功，正在热重启核心 ...")
+		if p.core != nil {
+			p.core.Restart()
+		}
 	}
 }
 

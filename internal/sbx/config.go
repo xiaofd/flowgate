@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"flowgate/internal/cfg"
+	"flowgate/internal/parser"
 	"flowgate/internal/warp"
 )
 
@@ -164,6 +165,16 @@ func BuildConfig(p cfg.Paths, app cfg.App, acc *warp.Account) error {
 				Reserved:   []int{int(res[0]), int(res[1]), int(res[2])},
 			}},
 		}}
+	case cfg.BackendCustom:
+		if strings.TrimSpace(app.Warp.NodeURL) == "" {
+			return fmt.Errorf("自定义节点后端需要提供有效的节点分享链接 (node_url)")
+		}
+		parsed, err := parser.ParseNodeURL(app.Warp.NodeURL, "warp")
+		if err != nil {
+			return fmt.Errorf("解析自定义节点链接失败: %w", err)
+		}
+		warpOutbound = parsed.Outbound
+		dnsWarp = sbDNSServer{Type: "https", Tag: "dns-warp", Server: app.DNS.Remote, Detour: "warp"}
 	default: // client
 		proxyHost, proxyPort := splitEndpoint(app.Warp.ClientProxy)
 		dnsWarp = sbDNSServer{Type: "https", Tag: "dns-warp", Server: app.DNS.Remote, Detour: "warp"}

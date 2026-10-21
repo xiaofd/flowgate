@@ -18,7 +18,7 @@ import (
 )
 
 // Version 当前版本。
-const Version = "1.0.2"
+const Version = "1.0.3"
 
 var (
 	flagHome      string
@@ -103,6 +103,8 @@ func run(args []string) error {
 		return cmdDoctor(p)
 	case "rules", "rule":
 		return cmdRules(p)
+	case "upstream", "node":
+		return cmdUpstream(p, cmdArgs)
 	case "update-rules":
 		return cmdUpdateRules(p, cmdArgs)
 	case "update":
@@ -147,6 +149,7 @@ func usage() {
 	term.Plain("  logs [-f] [-n] 查看核心日志（-f 跟随，-n 行数，默认 50）")
 	term.Plain("  doctor         全面自检")
 	term.Plain("  rules          管理自定义分流清单（支持通配符与 IP/CIDR）")
+	term.Plain("  upstream [url] 管理上游后端或直接设置节点分享链接（别名: node）")
 	term.Plain("  update         一键更新：刷新分流规则 + 升级官方 WARP 客户端")
 	term.Plain("  update-rules   仅刷新分流规则（--online 从镜像在线更新）")
 	term.Plain("  warp-scan      扫描可用接入点并择优（仅 wireguard 后端）")
@@ -155,6 +158,7 @@ func usage() {
 	term.Plain("上游后端（config.json 中 warp.backend）:")
 	term.Plain("  client     官方 1.1.1.1 客户端（MASQUE 隧道，本地 SOCKS5，默认）")
 	term.Plain("  wireguard  内置 WireGuard 直连 WARP（单文件、无外部依赖）")
+	term.Plain("  custom     自定义节点分享链接 (VLESS-Reality-Vision / Hysteria2 / TUIC / VMess / SS / Trojan / Socks5 / HTTP)")
 	term.Plain("")
 	term.Plain("全局参数:")
 	term.Plain("  --home DIR     指定数据根目录（默认 Windows: %%ProgramData%%\\FlowGate, Linux: /etc/flowgate 等）")

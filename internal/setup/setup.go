@@ -4,12 +4,17 @@ package setup
 import (
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"flowgate/internal/assets"
 	"flowgate/internal/cfg"
+	"flowgate/internal/parser"
 	"flowgate/internal/sbx"
 	"flowgate/internal/warp"
 	"flowgate/internal/wclient"
@@ -17,6 +22,75 @@ import (
 
 // Printer 进度输出函数（CLI 传彩色输出，服务模式传日志）。
 type Printer func(format string, v ...any)
+
+// RuleMirrors 规则集在线镜像（优先使用高速国内镜像，原站作后备）。
+var RuleMirrors = map[string][]string{
+	"geosite-gfw.srs": {
+		"https://gh-proxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/gfw.srs",
+		"https://mirror.ghproxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/gfw.srs",
+		"https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/gfw.srs",
+	},
+	"geosite-cn.srs": {
+		"https://gh-proxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs",
+		"https://mirror.ghproxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs",
+		"https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs",
+	},
+	"geoip-cn.srs": {
+		"https://gh-proxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs",
+		"https://mirror.ghproxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs",
+		"https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs",
+	},
+}
+
+// DownloadRules 在线下载规则集到 dir。
+func DownloadRules(dir string, print Printer) error {
+	if print == nil {
+		print = func(string, ...any) {}
+	}
+	client := &http.Client{Timeout: 15 * time.Second}
+	for name, urls := range RuleMirrors {
+		var lastErr error
+		done := false
+		print("下载规则集: %s ...", name)
+		for _, u := range urls {
+			req, rerr := http.NewRequest(http.MethodGet, u, nil)
+			if rerr != nil {
+				lastErr = rerr
+				continue
+			}
+			req.Header.Set("User-Agent", "curl/8.5.0")
+			resp, err := client.Do(req)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			if resp.StatusCode != http.StatusOK {
+				lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+				resp.Body.Close()
+				continue
+			}
+			f, err := os.Create(filepath.Join(dir, name))
+			if err != nil {
+				resp.Body.Close()
+				return err
+			}
+			_, err = io.Copy(f, resp.Body)
+			f.Close()
+			resp.Body.Close()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			done = true
+			break
+		}
+		if !done {
+			return fmt.Errorf("下载 %s 失败: %w", name, lastErr)
+		}
+		print("已更新 %s", name)
+	}
+	return nil
+}
 
 // Ensure 执行完整初始化（幂等，可重复执行）。
 func Ensure(p cfg.Paths, print Printer) error {
@@ -63,6 +137,14 @@ func Ensure(p cfg.Paths, print Printer) error {
 		acc, err = ensureWireguard(p, app, print)
 		if err != nil {
 			return err
+		}
+	case cfg.BackendCustom:
+		if strings.TrimSpace(app.Warp.NodeURL) == "" {
+			return fmt.Errorf("自定义节点后端模式下，尚未配置节点链接，请执行 flowgate node 或修改 config.json 设置 warp.node_url")
+		}
+		print("校验自定义节点链接 ...")
+		if _, err := parser.ParseNodeURL(app.Warp.NodeURL, "warp"); err != nil {
+			return fmt.Errorf("自定义节点链接无效: %w", err)
 		}
 	default:
 		proxyAddr, cerr := ensureClient(app, print)

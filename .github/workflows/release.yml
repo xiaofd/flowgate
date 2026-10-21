@@ -48,7 +48,7 @@ jobs:
           export GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0
           go install -trimpath \
             -ldflags "-s -w -X github.com/sagernet/sing-box/constant.Version=1.14.1-min" \
-            -tags "with_wireguard with_clash_api" \
+            -tags "with_quic with_utls with_wireguard with_clash_api" \
             "github.com/sagernet/sing-box/cmd/sing-box@v1.14.1"
           SUB=""
           if [ "$GOOS" != "$HOST_OS" ] || [ "$GOARCH" != "$HOST_ARCH" ]; then
